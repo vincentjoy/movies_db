@@ -20,5 +20,6 @@ urlpatterns = [
     path('api/', include('api.urls')),
     path('api-auth/', include('rest_framework.urls')),
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
-    path('login/', obtain_auth_token, name='login'),
+    path('api/login/', obtain_auth_token, name='login'),
+    path('api/accounts/', include('accounts.urls')),
 ]
