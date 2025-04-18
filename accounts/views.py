@@ -5,6 +5,7 @@ from .serializers import UserRegistrationSerializer, UserSerializer, LoginSerial
 from django.contrib.auth import get_user_model
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
+from rest_framework.views import APIView
 
 User = get_user_model()
 
@@ -60,3 +61,15 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user
+
+
+class LogoutView(APIView):
+    """View for logging out a user by deleting their auth token"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        # Simply delete the token to force a login
+        request.user.auth_token.delete()
+        return Response({
+            "message": "Successfully logged out."
+        }, status=status.HTTP_200_OK)
