@@ -9,7 +9,7 @@ from django.contrib.auth import authenticate
 User = get_user_model()
 
 class RegisterUserView(generics.CreateAPIView):
-    """View for user registration"""
+    """View for user registration that also returns an auth token"""
     queryset = User.objects.all()
     permission_classes = (permissions.AllowAny,)
     serializer_class = UserRegistrationSerializer
@@ -18,10 +18,16 @@ class RegisterUserView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+
+        # Generate or get auth token
+        token, created = Token.objects.get_or_create(user=user)
+
         return Response({
+            "token": token.key,
             "user": UserSerializer(user, context=self.get_serializer_context()).data,
             "message": "User created successfully!"
         }, status=status.HTTP_201_CREATED)
+
 
 class LoginView(generics.GenericAPIView):
     """Custom login view that returns user details with token"""
@@ -31,23 +37,21 @@ class LoginView(generics.GenericAPIView):
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
         username = serializer.validated_data['username']
         password = serializer.validated_data['password']
 
         user = authenticate(username=username, password=password)
-
         if user is None:
             return Response({
                 'error': 'Invalid username or password'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         token, created = Token.objects.get_or_create(user=user)
-
         return Response({
             'token': token.key,
             'user': UserSerializer(user).data
         }, status=status.HTTP_200_OK)
+
 
 class UserDetailView(generics.RetrieveUpdateAPIView):
     """View for retrieving and updating user details"""
