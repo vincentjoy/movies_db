@@ -1,61 +1,66 @@
-from rest_framework import generics, permissions
+from rest_framework import generics, permissions, status
 from rest_framework.response import Response
-from rest_framework import status
-from .serializers import UserRegistrationSerializer, UserSerializer, LoginSerializer
-from django.contrib.auth import get_user_model
-from rest_framework.authtoken.models import Token
-from django.contrib.auth import authenticate
 from rest_framework.views import APIView
+from rest_framework.authtoken.models import Token
+from django.contrib.auth import authenticate, get_user_model
+
+from .serializers import UserRegistrationSerializer, UserSerializer, LoginSerializer
 
 User = get_user_model()
 
-class RegisterUserView(generics.CreateAPIView):
-    """View for user registration that also returns an auth token"""
+class TokenResponseMixin:
+    """Mixin for consistent token-based responses"""
+    def get_token_response(self, user):
+        """Generate token and return consistent response format"""
+        token, _ = Token.objects.get_or_create(user=user)
+        return {
+            "token": token.key,
+            "user": UserSerializer(user, context=self.get_serializer_context()).data
+        }
+
+
+class RegisterUserView(TokenResponseMixin, generics.CreateAPIView):
+    """API endpoint for user registration"""
     queryset = User.objects.all()
     permission_classes = (permissions.AllowAny,)
     serializer_class = UserRegistrationSerializer
 
-    def post(self, request, *args, **kwargs):
+    def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
 
-        # Generate or get auth token
-        token, created = Token.objects.get_or_create(user=user)
+        response_data = self.get_token_response(user)
+        response_data["message"] = "User created successfully!"
 
-        return Response({
-            "token": token.key,
-            "user": UserSerializer(user, context=self.get_serializer_context()).data,
-            "message": "User created successfully!"
-        }, status=status.HTTP_201_CREATED)
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
 
-class LoginView(generics.GenericAPIView):
-    """Custom login view that returns user details with token"""
+class LoginView(TokenResponseMixin, generics.GenericAPIView):
+    """API endpoint for user login"""
     serializer_class = LoginSerializer
     permission_classes = (permissions.AllowAny,)
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        username = serializer.validated_data['username']
-        password = serializer.validated_data['password']
 
-        user = authenticate(username=username, password=password)
-        if user is None:
-            return Response({
-                'error': 'Invalid username or password'
-            }, status=status.HTTP_400_BAD_REQUEST)
+        user = authenticate(
+            username=serializer.validated_data['username'],
+            password=serializer.validated_data['password']
+        )
 
-        token, created = Token.objects.get_or_create(user=user)
-        return Response({
-            'token': token.key,
-            'user': UserSerializer(user).data
-        }, status=status.HTTP_200_OK)
+        if not user:
+            return Response(
+                {'error': 'Invalid credentials'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        return Response(self.get_token_response(user), status=status.HTTP_200_OK)
 
 
 class UserDetailView(generics.RetrieveUpdateAPIView):
-    """View for retrieving and updating user details"""
+    """API endpoint for retrieving and updating the authenticated user's details"""
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -64,12 +69,12 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
 
 
 class LogoutView(APIView):
-    """View for logging out a user by deleting their auth token"""
+    """API endpoint for user logout"""
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        # Simply delete the token to force a login
         request.user.auth_token.delete()
-        return Response({
-            "message": "Successfully logged out."
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {"message": "Successfully logged out."},
+            status=status.HTTP_200_OK
+        )
