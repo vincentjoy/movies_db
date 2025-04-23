@@ -28,6 +28,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         # Email format is handled by the EmailField automatically before this step.
         attrs = self.validate_passwords(attrs)
         # Check if username and email are different
+        # The 'username' and 'email' checks in attrs are necessary guard clauses to prevent potential KeyError exceptions
         if 'username' in attrs and 'email' in attrs and attrs['username'] == attrs['email']:
             raise serializers.ValidationError("Username and email cannot be the same.")
         return attrs
